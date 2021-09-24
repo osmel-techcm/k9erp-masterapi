@@ -1,0 +1,39 @@
+{
+  "iisSettings": {
+    "windowsAuthentication": false,
+    "anonymousAuthentication": true,
+    "iisExpress": {
+      "applicationUrl": "http://localhost:5000",
+      "sslPort": 5001
+    }
+  },
+  "$schema": "http://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "masterApi": {
+      "commandName": "Project",
+      "launchUrl": "weatherforecast",
+      "environmentVariables": {
+        "USER": "mvc",
+        "SERVER": "host.docker.internal\\MSSQLSERVER_19",
+        "DATABASE": "multitenant-k9erp",
+        "SERVER-REDIS": "localhost:6379",
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "PASSWORD": "Winter*123"
+      },
+      "applicationUrl": "http://localhost:5010"
+    },
+    "Docker": {
+      "commandName": "Docker",
+      "launchBrowser": true,
+      "launchUrl": "{Scheme}://{ServiceHost}:{ServicePort}",
+      "environmentVariables": {
+        "USER": "mvc",
+        "SERVER": "host.docker.internal\\\\MSSQLSERVER_16",
+        "DATABASE": "multitenant-db",
+        "PASSWORD": "Winter*123"
+      },
+      "publishAllPorts": true,
+      "useSSL": true
+    }
+  }
+}
