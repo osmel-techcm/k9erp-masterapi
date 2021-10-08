@@ -10,12 +10,14 @@ namespace masterCore.Services
         private readonly IAspNetUserRepo _aspNetUserRepo;
         private readonly IUsersTenantsRelationService _usersTenantsRelationService;
         private readonly IAspNetUsersGroupsService _aspNetUsersGroupsService;
+        private readonly ITwoFactorAuthService _iTwoFactorAuthService;
 
-        public AspNetUserService(IAspNetUserRepo aspNetUserRepo, IUsersTenantsRelationService usersTenantsRelationService, IAspNetUsersGroupsService aspNetUsersGroupsService)
+        public AspNetUserService(IAspNetUserRepo aspNetUserRepo, IUsersTenantsRelationService usersTenantsRelationService, IAspNetUsersGroupsService aspNetUsersGroupsService, ITwoFactorAuthService iTwoFactorAuthService)
         {
             _aspNetUserRepo = aspNetUserRepo;
             _usersTenantsRelationService = usersTenantsRelationService;
             _aspNetUsersGroupsService = aspNetUsersGroupsService;
+            _iTwoFactorAuthService = iTwoFactorAuthService;
         }
 
         public async Task<responseData> GetUsersByCustomer(int customer)
@@ -276,5 +278,40 @@ namespace masterCore.Services
             return responseData;
         }
 
+        public async Task<responseData> GenerateSetupCode(string issuer, string email, string key)
+        {
+            return await _iTwoFactorAuthService.GenerateSetupCode(issuer, email, key);
+        }
+
+        public async Task<responseData> EnableTwoFactorAuth(string issuer, string code, string key)
+        {
+            var responseData = new responseData();
+
+            var responseValidator = await _iTwoFactorAuthService.ValidateTwoFactorAuth(key, code);
+            if (responseValidator.error)
+            {
+                return responseValidator;
+            }
+
+            var responseValidatorData = (bool)responseValidator.data;
+            if (!responseValidatorData)
+            {
+                responseData.error = true;
+                responseData.description = "The code does not work!";
+                return responseData;
+            }
+
+            var userResponse = await GetUserByTenant(issuer, issuer);
+            if (userResponse.error)
+            {
+                return userResponse;
+            }
+
+            var user = (AspNetUser)userResponse.data;
+            user.TwoFactorEnabled = true;
+            user.Password = user.PasswordHash;
+
+            return await PutAspNetUserUser(user);
+        }
     }
 }

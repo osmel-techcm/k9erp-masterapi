@@ -1,7 +1,10 @@
 ﻿using masterCore.Entities;
 using masterCore.Interfaces;
+using masterInfrastructure.Models;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -14,10 +17,12 @@ namespace masterApi.Controllers
     public class AspNetUsersController : ControllerBase
     {
         private readonly IAspNetUserService _aspNetUserService;
+        private readonly UserManager<ApplicationUser> _userManager;
 
-        public AspNetUsersController(IAspNetUserService aspNetUserService)
+        public AspNetUsersController(IAspNetUserService aspNetUserService, UserManager<ApplicationUser> userManager)
         {
             _aspNetUserService = aspNetUserService;
+            _userManager = userManager;
         }
 
         [Authorize(Roles = "Admin")]
@@ -115,6 +120,22 @@ namespace masterApi.Controllers
         public async Task<responseData> GetUser(string id)
         {
             return await _aspNetUserService.GetUser(id);
+        }
+
+        [HttpPost]
+        [Route("GetTwoFactorAuth")]
+        public async Task<responseData> GetTwoFactorAuth(string id)
+        {
+            var appUser = await _userManager.Users.SingleOrDefaultAsync(r => r.Id == id);
+            return await _aspNetUserService.GenerateSetupCode(appUser.Name + " " + appUser.LastName + " (K9ERP)", appUser.UserName, appUser.Id);
+        }
+
+        [HttpPut]
+        [Route("EnableTwoFactorAuth")]
+        public async Task<responseData> EnableTwoFactorAuth(string id, string code)
+        {
+            var currentUserId = HttpContext.User.Claims.FirstOrDefault(x => x.Type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier").Value;
+            return await _aspNetUserService.EnableTwoFactorAuth(id, code, currentUserId);
         }
     }
 }

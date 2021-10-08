@@ -30,6 +30,7 @@
   <ItemGroup>
     <ProjectReference Include="..\masterCore\masterCore.csproj" />
     <ProjectReference Include="..\masterInfrastructure\masterInfrastructure.csproj" />
+    <ProjectReference Include="..\masterShared\masterShared.csproj" />
   </ItemGroup>
 
 </Project>

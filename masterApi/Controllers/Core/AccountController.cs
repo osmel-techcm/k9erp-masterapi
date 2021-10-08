@@ -33,8 +33,12 @@ namespace masterApi.Controllers
 
         private readonly IAspNetUsersGroupsService _aspNetUsersGroupsService;
         private readonly IConfigService _configService;
+        private readonly IAspNetUserService _aspNetUserService;
+        private readonly ITwoFactorAuthService _twoFactorAuthService;
 
-        public AccountController(UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager, IConfiguration configuration, AppDbContext contextApp, IAspNetUsersGroupsService aspNetUsersGroupsService, IConfigService configService)
+        public AccountController(UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager, IConfiguration configuration, 
+            AppDbContext contextApp, IAspNetUsersGroupsService aspNetUsersGroupsService, IConfigService configService, IAspNetUserService aspNetUserService, 
+            ITwoFactorAuthService twoFactorAuthService)
         {
             _userManager = userManager;
             _signInManager = signInManager;
@@ -43,6 +47,8 @@ namespace masterApi.Controllers
             _cn = _contextApp.Database.GetDbConnection().ConnectionString;
             _aspNetUsersGroupsService = aspNetUsersGroupsService;
             _configService = configService;
+            _aspNetUserService = aspNetUserService;
+            _twoFactorAuthService = twoFactorAuthService;
         }
 
         [HttpPost("Login")]
@@ -246,6 +252,7 @@ namespace masterApi.Controllers
                     {
                         var tenantSel = await _contextApp.Tenants.FirstOrDefaultAsync(x => x.Id == defaultTenants.FirstOrDefault().TenantId);
                         loginResults.Add("multiTenant", false);
+                        loginResults.Add("twoFactor", appUser.TwoFactorEnabled);
 
                         var tenants = new JObject
                         {
@@ -255,8 +262,10 @@ namespace masterApi.Controllers
                             { "tenantToken", await GenerateJwtTokenTenant(user.Email, appUser, tenantSel.ConnectionString) }
                         };
 
-                        var jResult = new JArray();
-                        jResult.Add(tenants);
+                        var jResult = new JArray
+                        {
+                            tenants
+                        };
                         loginResults.Add("tenants", jResult);
                         messageResult.data = loginResults;
                         return messageResult;
@@ -265,6 +274,7 @@ namespace masterApi.Controllers
                     {
                         var jResult = new JArray();
                         loginResults.Add("multiTenant", true);
+                        loginResults.Add("twoFactor", appUser.TwoFactorEnabled);
 
                         foreach (var tenant in defaultTenants)
                         {
@@ -377,6 +387,7 @@ namespace masterApi.Controllers
         {
 
             var userdb = await _contextApp.AspNetUsers.FirstOrDefaultAsync(x => x.Id == user.Id);
+            var tokenStr = string.Empty;
 
             var claims = new List<Claim>
             {
@@ -402,7 +413,14 @@ namespace masterApi.Controllers
 
             token.Header.Add("kid", idTenant);
 
-            return new JwtSecurityTokenHandler().WriteToken(token);
+            tokenStr = new JwtSecurityTokenHandler().WriteToken(token);
+
+            if (user.TwoFactorEnabled)
+            {
+                tokenStr = await _twoFactorAuthService.EncriptToken(tokenStr, idTenant);
+            }
+
+            return tokenStr;
         }
 
         [HttpGet]
@@ -595,6 +613,89 @@ namespace masterApi.Controllers
             {
                 config.propValue = "False";
                 await _configService.PutConfig(config.Id, config);
+            }
+        }
+
+        [Authorize]
+        [HttpGet]
+        [Route("getUserProfile")]
+        public async Task<responseData> getUserProfile() 
+        {
+            var currentUserId = HttpContext.User.Claims.FirstOrDefault(x => x.Type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier").Value;
+            return await _aspNetUserService.GetUserByTenant(currentUserId, currentUserId);
+        }
+
+        [HttpPost]
+        [Route("validateOTP")]
+        public async Task<responseData> validateOTP(string code, dynamic tenantData)
+        {
+            var responseData = new responseData();
+            ClaimsPrincipal resultValidateToken = new ClaimsPrincipal();
+
+            try
+            {
+                var tenants = tenantData.tenants;
+                foreach (var tenant in tenants)
+                {
+                    tenant.tenantToken = await _twoFactorAuthService.DecriptToken(tenant.tenantToken.ToString(), tenant.ConnectionString.ToString());
+                    resultValidateToken = validateToken(tenant.tenantToken.ToString(), tenant.ConnectionString.ToString());
+                    if (resultValidateToken == null)
+                    {
+                        responseData.error = true;
+                        responseData.errorValue = 2;
+                        responseData.description = "Invalid Token!";
+                        return responseData;
+                    }
+                }
+
+                responseData = await _twoFactorAuthService.ValidateTwoFactorAuth(resultValidateToken.Claims.FirstOrDefault(x => x.Type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier").Value, code);
+                if (responseData.error)
+                {
+                    return responseData;
+                }
+
+                if (!(bool)responseData.data)
+                {
+                    responseData.error = true;
+                    responseData.errorValue = 2;
+                    responseData.description = "Invalid OTP!";
+                    return responseData;
+                }
+
+                responseData.data = tenants;
+
+                return responseData;
+            }
+            catch (Exception e)
+            {
+                responseData.error = true;
+                responseData.errorValue = 2;
+                responseData.description = e.Message;
+                responseData.data = e;
+                return responseData;
+            }
+        }
+
+        private ClaimsPrincipal validateToken(string token, string tenantId)
+        {
+            var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_configuration["JwtKeyTenant"] + "-" + tenantId));
+
+            var validationParameters = new TokenValidationParameters()
+            {
+                ValidIssuer = _configuration["JwtIssuer"],
+                ValidAudiences = new List<string> { _configuration["JwtAudienceTenant"], _configuration["JwtAudience"] },
+                IssuerSigningKey = securityKey
+            };
+
+            SecurityToken validatedToken;
+            var handler = new JwtSecurityTokenHandler();
+            try
+            {                
+                return handler.ValidateToken(token, validationParameters, out validatedToken);
+            }
+            catch (SecurityTokenException e)
+            {
+                return null;
             }
         }
     }
