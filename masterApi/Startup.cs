@@ -2,6 +2,7 @@ using HealthChecks.UI.Client;
 using masterApi.Validation;
 using masterInfrastructure;
 using masterInfrastructure.Data;
+using masterShared;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -43,6 +44,8 @@ namespace masterApi
             }));
 
             services.AddInfrastructure(Configuration);
+
+            services.AddDependenciesShared(Configuration);
 
             JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
 

@@ -14,5 +14,7 @@ namespace masterCore.Interfaces
         Task<responseData> PostUserByTenant(string currentUserId, AspNetUser user);
         Task<responseData> GetUsers(PaginatorData paginatorData);
         Task<responseData> GetUser(string id);
+        Task<responseData> GenerateSetupCode(string issuer, string email, string key);
+        Task<responseData> EnableTwoFactorAuth(string issuer, string code, string key);
     }
 }
